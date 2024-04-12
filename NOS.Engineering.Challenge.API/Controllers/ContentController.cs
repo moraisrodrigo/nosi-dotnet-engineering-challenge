@@ -20,6 +20,7 @@ public class ContentController : Controller
     }
 
     [HttpGet]
+    [Obsolete("This endpoint is deprecated. Use GET /api/v1/Content/Search instead.")]
     public async Task<IActionResult> GetManyContents()
     {
         _logger.LogInformation("[{method}]: Attempting to retrieve contents...", nameof(GetManyContents));
@@ -42,6 +43,37 @@ public class ContentController : Controller
             _logger.LogError(ex, "[{method}]: An error occurred while getting contents.", nameof(GetManyContents));
             return new StatusCodeResult(StatusCodes.Status500InternalServerError);
 
+        }
+    }
+
+    [HttpGet("Search")]
+    public async Task<IActionResult> SearchContents(string? title = null, string? genre = null)
+    {
+        _logger.LogInformation("[{method}]: Attempting to SearchContents", nameof(SearchContents));
+        try
+        {
+            IEnumerable<Content?> contents = await _manager.GetManyContents().ConfigureAwait(false);
+
+            // Filter out null contents
+            contents = contents.Where(content => content != null);
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                contents = contents.Where(content => content?.Title != null && content.Title.Contains(title));
+            }
+
+            if (!string.IsNullOrEmpty(genre))
+            {
+                contents = contents.Where(content => content?.GenreList != null && content.GenreList.Contains(genre));
+            }
+
+            _logger.LogInformation("[{method}]: SearchContents method executed successfully.", nameof(SearchContents));
+            return Ok(contents);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{method}]: An error occurred while searching contents.", nameof(SearchContents));
+            return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while searching contents.");
         }
     }
 
