@@ -35,26 +35,26 @@ public static class WebApplicationBuilderExtensions
 
     private static IServiceCollection RegisterSlowDatabase(this IServiceCollection services)
     {
-        services.AddSingleton<IDatabase<Content, ContentDto>,SlowDatabase<Content, ContentDto>>();
+        services.AddSingleton<IDatabase<Content, ContentDto>, SlowDatabase<Content, ContentDto>>();
         services.AddSingleton<IMapper<Content, ContentDto>, ContentMapper>();
         services.AddSingleton<IMockData<Content>, MockData>();
 
         return services;
     }
-    
+
     private static IServiceCollection RegisterContentsManager(this IServiceCollection services)
     {
         services.AddSingleton<IContentsManager, ContentsManager>();
 
         return services;
     }
-    
-    
+
+
     public static WebApplicationBuilder ConfigureWebHost(this WebApplicationBuilder webApplicationBuilder)
     {
-        webApplicationBuilder
-            .WebHost
-            .ConfigureLogging(logging => { logging.ClearProviders(); });
+
+        webApplicationBuilder.Logging.ClearProviders();
+        webApplicationBuilder.Logging.AddConsole();
 
         return webApplicationBuilder;
     }
