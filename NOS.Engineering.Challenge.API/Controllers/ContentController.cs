@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using NOS.Engineering.Challenge.API.Models;
+using NOS.Engineering.Challenge.Interfaces;
 using NOS.Engineering.Challenge.Managers;
 using NOS.Engineering.Challenge.Models;
 
@@ -12,11 +13,13 @@ public class ContentController : Controller
 {
     private readonly IContentsManager _manager;
     private readonly ILogger<ContentController> _logger;
+    private readonly ICacheService<Content> _cacheService;
 
-    public ContentController(IContentsManager manager, ILogger<ContentController> logger)
+    public ContentController(IContentsManager manager, ILogger<ContentController> logger, ICacheService<Content> cacheService)
     {
         _manager = manager;
         _logger = logger;
+        _cacheService = cacheService;
     }
 
     [HttpGet]
@@ -33,6 +36,11 @@ public class ContentController : Controller
             {
                 _logger.LogInformation("[{method}]: No contents found.", nameof(GetManyContents));
                 return NotFound();
+            }
+
+            foreach (Content? content in contents)
+            {
+                if (content != null) await _cacheService.Set(content.Id, content).ConfigureAwait(false);
             }
 
             _logger.LogInformation("[{method}]: Retrived {numberOfContents} contents.", nameof(GetManyContents), contents.Count());
@@ -67,6 +75,11 @@ public class ContentController : Controller
                 contents = contents.Where(content => content?.GenreList != null && content.GenreList.Contains(genre));
             }
 
+            foreach (Content? content in contents)
+            {
+                if (content != null) await _cacheService.Set(content.Id, content).ConfigureAwait(false);
+            }
+
             _logger.LogInformation("[{method}]: SearchContents method executed successfully.", nameof(SearchContents));
             return Ok(contents);
         }
@@ -84,7 +97,16 @@ public class ContentController : Controller
 
         try
         {
-            Content? content = await _manager.GetContent(id).ConfigureAwait(false);
+
+            Content? content = await _cacheService.Get(id).ConfigureAwait(false);
+
+            if (content != null)
+            {
+                _logger.LogInformation("[{method}]: Content retrieved successfully with ID: '{id}'.", nameof(GetContent), id);
+                return Ok(content);
+            }
+
+            content = await _manager.GetContent(id).ConfigureAwait(false);
 
             if (content == null)
             {
@@ -92,39 +114,42 @@ public class ContentController : Controller
                 return NotFound();
             }
 
-            _logger.LogInformation("[{method}]: Content retrieved successfully with ID '{id}'", nameof(GetContent), id);
+            await _cacheService.Set(content.Id, content).ConfigureAwait(false);
+
+            _logger.LogInformation("[{method}]: Content retrieved successfully with ID: '{id}'", nameof(GetContent), id);
             return Ok(content);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[{method}]: An error occurred while getting content with ID '{id}'.", nameof(GetContent), id);
+            _logger.LogError(ex, "[{method}]: An error occurred while getting content with ID: '{id}'.", nameof(GetContent), id);
             return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-
         }
     }
 
     [HttpPost]
     public async Task<IActionResult> CreateContent(
-        [FromBody] ContentInput content
+        [FromBody] ContentInput contentInput
         )
     {
-        _logger.LogInformation("[{method}]: Attempting to create a content", nameof(GetContent));
+        _logger.LogInformation("[{method}]: Attempting to create a content", nameof(CreateContent));
         try
         {
-            Content? createdContent = await _manager.CreateContent(content.ToDto()).ConfigureAwait(false);
+            Content? content = await _manager.CreateContent(contentInput.ToDto()).ConfigureAwait(false);
 
-            if (createdContent == null)
+            if (content == null)
             {
-                _logger.LogInformation("[{method}]: Failed to create content.", nameof(GetContent));
+                _logger.LogInformation("[{method}]: Failed to create content.", nameof(CreateContent));
                 return Problem();
             }
 
-            _logger.LogInformation("[{method}]: Content created successfully.", nameof(GetContent));
-            return Ok(createdContent);
+            await _cacheService.Set(content.Id, content).ConfigureAwait(false);
+
+            _logger.LogInformation("[{method}]: Content created successfully.", nameof(CreateContent));
+            return Ok(content);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[{method}]: An error occurred while creating content.", nameof(GetContent));
+            _logger.LogError(ex, "[{method}]: An error occurred while creating content.", nameof(CreateContent));
             return new StatusCodeResult(StatusCodes.Status500InternalServerError);
         }
 
@@ -136,7 +161,7 @@ public class ContentController : Controller
         [FromBody] ContentInput content
         )
     {
-        _logger.LogInformation("[{method}]: Attempting to update content with ID: '{id}'", nameof(GetContent), id); ;
+        _logger.LogInformation("[{method}]: Attempting to update content with ID: '{id}'", nameof(UpdateContent), id); ;
 
         try
         {
@@ -147,6 +172,8 @@ public class ContentController : Controller
                 _logger.LogInformation("[{method}]: Content with ID: '{id}' not found.", nameof(UpdateContent), id);
                 return NotFound();
             }
+
+            await _cacheService.Set(id, updatedContent).ConfigureAwait(false); ;
 
             _logger.LogInformation("[{method}]: Content updated successfully with ID '{id}'", nameof(UpdateContent), id);
             return Ok(updatedContent);
@@ -167,6 +194,8 @@ public class ContentController : Controller
 
         try
         {
+            await _cacheService.Remove(id);
+
             Guid deletedId = await _manager.DeleteContent(id).ConfigureAwait(false);
 
             if (deletedId == Guid.Empty)
@@ -174,6 +203,7 @@ public class ContentController : Controller
                 _logger.LogInformation("[{method}]: Content with ID: '{id}' not found.", nameof(DeleteContent), id);
                 return NotFound();
             }
+
 
             _logger.LogInformation("[{method}]: Content deleted successfully with ID '{id}'", nameof(DeleteContent), id);
             return Ok(deletedId);
@@ -195,7 +225,7 @@ public class ContentController : Controller
 
         try
         {
-            Content? content = await _manager.GetContent(id).ConfigureAwait(false);
+            Content? content = await _cacheService.Get(id) ?? await _manager.GetContent(id).ConfigureAwait(false);
 
             if (content == null)
             {
@@ -241,6 +271,8 @@ public class ContentController : Controller
 
             Content? updatedContent = await _manager.UpdateContent(id, updatedContentDto).ConfigureAwait(false);
 
+            if (updatedContent != null) await _cacheService.Set(id, updatedContent).ConfigureAwait(false);
+
             _logger.LogInformation("[{method}]: Genres added successfully to content with ID '{id}'", nameof(AddGenres), id);
             return Ok(updatedContent);
         }
@@ -261,11 +293,12 @@ public class ContentController : Controller
 
         try
         {
-            Content? content = await _manager.GetContent(id).ConfigureAwait(false);
+            // Content? content = await _manager.GetContent(id).ConfigureAwait(false);
+            Content? content = await _cacheService.Get(id) ?? await _manager.GetContent(id).ConfigureAwait(false);
 
             if (content == null)
             {
-                _logger.LogInformation("[{method}]: Content with ID: '{id}' not found.", nameof(RemoveGenres), id);
+                _logger.LogInformation("[{method}]: Content with ID: '{id}' not found.", nameof(AddGenres), id);
                 return NotFound();
             }
 
@@ -298,6 +331,8 @@ public class ContentController : Controller
             );
 
             Content? updatedContent = await _manager.UpdateContent(id, updatedContentDto).ConfigureAwait(false);
+
+            if (updatedContent != null) await _cacheService.Set(id, updatedContent).ConfigureAwait(false);
 
             _logger.LogInformation("[{method}]: Genres removed successfully from content with ID: '{id}'", nameof(RemoveGenres), id);
             return Ok(updatedContent);

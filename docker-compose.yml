@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  nos.engineering.challenge.api:
+    image: nos.engineering.challenge.api
+    build:
+      context: .
+      dockerfile: NOS.Engineering.Challenge.API/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+
+  db:
+    image: mysql:latest
+    container_name: nos.engineering.challenge.db
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: db_challenge
+      MYSQL_USER: mysql
+      MYSQL_PASSWORD: mysql
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks:
+      - dev
+
+networks:
+  dev:
+    driver: bridge
